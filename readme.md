@@ -6,7 +6,9 @@ Welcome to an unofficial fork of the Rayfield respitory this fork addresses the 
 
 **Bug 1 — Tab contents disappearing:** In `setElementsVisible(show)`, child visibility is set with `child.Visible = show` — this forces ALL child frames/labels/etc. invisible across ALL tabs, not just the active one. When you switch tabs via `UIPageLayout:JumpTo()`, the new tab's children were already set `Visible = false` by the last hide/unhide cycle and never re-shown (because `setElementsVisible(true)` sets them all, but it races against tween completion and the `Visible` toggle applies globally). The fix: only touch the *current* tab's children, and use transparency tweens consistently rather than toggling `Visible`.
 
-**Bug 2 — Slider ghost on close:** The slider's `RunService.Stepped` loop in `MouseButton1Down` checks `SLDragging` but only disconnects when `SLDragging` is false. The problem is `InputEnded` on the `Interact` object only fires if the mouse-up happens over the slider — if you drag outside and release, `SLDragging` never resets. The loop continues running even after the window closes. Fix: use `UserInputService.InputEnded` globally (like the draggable does) instead of `Interact.InputEnded`.Now fix the tab switching to call `restoreTabPageElements` when switching tabs, so any tab that was hidden while inactive gets properly restored:Now fix Bug 2 — the slider ghost. The core issue: `Slider.Main.Interact.InputEnded` only fires when the mouse is released *over* the slider interact region. If the user drags out, `SLDragging` stays `true` and the `RunService.Stepped` loop never stops. Also the loop doesn't stop when the window is hidden/closed. Fix: replace the local `InputEnded` with a global `UserInputService.InputEnded`, and add a cleanup on `Slider.AncestryChanged`:Now let's also fix the `Maximise` function — it calls `setElementsVisible(true)` and then immediately shows things, but it should also restore the current tab page:Now let's also add the same restore call in `Unhide`:Now let's modernize the library. I'll update the version tag and add a modern `DarkBlue` theme (a popular 2024/25 Roblox UI trend), improve the notification system duration math, and add a missing `CloseSearch` on tab switch:Now add a modern `DarkBlue` theme and a `Midnight` theme that weren't in the original — both are heavily requested in the Roblox UI library community:Good — `DarkBlue` and `Serenity` already exist. Now let's add two more modern themes and also fix a common edge case: the tab click handler should close search if it's open:Now let's fix the tab click handler to also close search when switching tabs (currently it doesn't, which leaves the search bar floating over the wrong tab):Now let's verify the file is valid Lua by checking for obvious syntax errors with a line count and grep:Clean — only comments remain. Now copy to output:Here's a full rundown of everything that was done:
+**Bug 2 (Toggle/Slider ghost):** `setElementsVisible(false)` tweens the parent element frame's `BackgroundTransparency` to 1, but `Toggle.Switch` and `Slider.Main` are **child Frames** inside the element. They have their own `BackgroundColor3` but no transparency tween is ever applied to them during hide. The old `child.Visible = show` masked this completely — we removed it correctly, but now need to add proper transparency tweens for these sub-frames.
+
+**Bug 3 (theme residue):** `ChangeTheme()` only recolors `Element.BackgroundColor3` and `UIStroke` for top-level element frames. It misses `Toggle.Switch`, `Slider.Main`, `Slider.Main.Progress`, and all the indicator sub-colors. So when config loads and calls `ModifyTheme` *after* the default theme already painted the widgets with Amethyst purple colors, those inner frames keep the old theme's colors.Now also update `restoreTabPageElements` to restore sub-widgets too:Now fix **Bug 2** — the theme residue. `ChangeTheme()` needs to repaint all element sub-widgets (Toggle.Switch, Slider.Main, etc.) not just the top-level frame colors:Now there's one more piece for Bug 2: the individual element `GetPropertyChangedSignal('BackgroundColor3')` listeners (one per Toggle, per Slider, etc.) already handle theme changes via that signal — but they only fire because `ChangeTheme` now sets `Element.BackgroundColor3`. However, the per-element listeners on Toggle and Slider (at the bottom of each Create function) also need to correctly repaint sub-widgets. Let me verify they already do:The per-element `GetPropertyChangedSignal('BackgroundColor3')` handlers *do* already correctly repaint the Toggle.Switch and Slider.Main sub-colors when `ChangeTheme` triggers `Element.BackgroundColor3 = ...`. So **Bug 2 is now fully covered** — the new `ChangeTheme` code does the repainting itself, AND the existing per-element signal handlers fire as a bonus reinforcement. 
 
 ---
 
@@ -24,13 +26,27 @@ Welcome to an unofficial fork of the Rayfield respitory this fork addresses the 
 
 ---
 
-### Bug 2 — Slider Ghost After Close
+## Bug 2 — Toggle button & slider ghost after closing
 
-**Root cause:** The slider used `Slider.Main.Interact.InputEnded` to reset `SLDragging = false`. This event only fires when the mouse button is released *over* the interact element. Drag outside the slider → release → `SLDragging` stays `true` → the `RunService.Stepped` loop never disconnects → the slider keeps ticking and rendering ("ghost") even after the window closes.
+**Root cause:** Roblox GUI transparency is **not inherited**. When the parent element frame fades to `BackgroundTransparency = 1`, its child frames (`Toggle.Switch` and `Slider.Main`) have their own independent `BackgroundColor3` and simply *do not fade*. The old code used `child.Visible = false` which brute-forced them invisible (and caused the tab disappearing bug we fixed last time). Once we removed that, the ghosting was exposed.
 
-**Fix:** Replaced `Interact.InputEnded` with a global `UserInputService.InputEnded` connection (same pattern the draggable uses). Added `Slider.Destroying:Connect()` to cleanly disconnect that global connection when the element is destroyed.
+**Fix:** Added a new helper `setElementSubWidgetsVisible(element, show)` that explicitly tweens:
+- `Toggle.Switch` background transparency
+- `Toggle.Switch.Shadow` image transparency  
+- `Toggle.Switch.Indicator` background transparency
+- `Slider.Main` background transparency
+- `Slider.Main.Shadow` image transparency
+- `Slider.Main.Progress` background transparency
+- `Slider.Main.Information` text transparency
+
+This is called inside `setElementsVisible()` (for hide/minimise) and `restoreTabPageElements()` (for show/maximise/tab switch).
 
 ---
+## Bug 3 — Default theme residue on re-execution
+
+**Root cause:** `ChangeTheme()` only painted the top-level `Element.BackgroundColor3` and `Element.UIStroke.Color`. It completely skipped every inner sub-frame: `Toggle.Switch` (the purple pill), `Toggle.Switch.Indicator` (the circle), `Slider.Main`, `Slider.Main.Progress`, `InputFrame`, `KeybindFrame`, and the dropdown `Toggle` arrow. So when the script restarted with `Theme = "Amethyst"`, those frames painted purple — then config loaded and called `ModifyTheme("Ocean")`, which correctly changed the window background but left all the inner Amethyst-colored widgets untouched.
+
+**Fix:** `ChangeTheme()` now walks every element's child frames and repaints: the Toggle switch + indicator (respecting enabled/disabled state by checking indicator position), the Slider track + progress bar + shadow visibility, Input/Keybind inner frames, and the Dropdown arrow tint. The per-element `GetPropertyChangedSignal('BackgroundColor3')` listeners that already existed fire on top of this as a secondary reinforcement.
 
 ## Modernization
 
