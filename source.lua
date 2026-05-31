@@ -1049,21 +1049,20 @@ local function ChangeTheme(Theme)
 				local switch = Element:FindFirstChild("Switch")
 				if switch and switch:IsA("Frame") then
 					switch.BackgroundColor3 = SelectedTheme.ToggleBackground
-					switch.UIStroke.Color = SelectedTheme.ToggleDisabledOuterStroke
+					-- Determine enabled state from indicator offset: enabled = -20, disabled = -40
 					local indicator = switch:FindFirstChild("Indicator")
 					if indicator and indicator:IsA("Frame") then
-						-- Preserve enabled/disabled coloring based on current state.
-						-- We don't have the ToggleSettings reference here so use indicator
-						-- position as a proxy: right-side = enabled.
-						local isEnabled = indicator.Position.X.Scale >= 0.5
+						-- X.Offset is -20 when enabled, -40 when disabled
+						local isEnabled = indicator.Position.X.Offset > -30
 						indicator.BackgroundColor3 = isEnabled and SelectedTheme.ToggleEnabled or SelectedTheme.ToggleDisabled
-						if indicator:FindFirstChild("UIStroke") then
-							indicator.UIStroke.Color = isEnabled and SelectedTheme.ToggleEnabledStroke or SelectedTheme.ToggleDisabledStroke
+						if indicator:FindFirstChildOfClass("UIStroke") then
+							indicator:FindFirstChildOfClass("UIStroke").Color = isEnabled and SelectedTheme.ToggleEnabledStroke or SelectedTheme.ToggleDisabledStroke
 						end
-						switch.UIStroke.Color = isEnabled and SelectedTheme.ToggleEnabledOuterStroke or SelectedTheme.ToggleDisabledOuterStroke
+						if switch:FindFirstChildOfClass("UIStroke") then
+							switch:FindFirstChildOfClass("UIStroke").Color = isEnabled and SelectedTheme.ToggleEnabledOuterStroke or SelectedTheme.ToggleDisabledOuterStroke
+						end
 					end
-					-- Hide shadow on non-default themes (was already done in CreateToggle,
-					-- but ChangeTheme needs to enforce it too when theme swaps happen)
+					-- Hide shadow on non-default themes
 					local shadow = switch:FindFirstChild("Shadow")
 					if shadow then
 						shadow.Visible = (SelectedTheme == RayfieldLibrary.Theme.Default)
@@ -1509,72 +1508,88 @@ end
 -- automatically hide them because Roblox GUI transparency is not inherited.
 -- This is the root cause of the Toggle/Slider "ghost" on hide/minimise.
 local function setElementSubWidgetsVisible(element, show)
-	-- Toggle: fade the Switch frame (the pill background)
+	-- Toggle: fade the Switch pill background + its UIStroke outline (the visible "ring")
 	local switch = element:FindFirstChild("Switch")
 	if switch and switch:IsA("Frame") then
-		TweenService:Create(switch, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = show and 0 or 1}):Play()
+		TweenService:Create(switch, TweenInfo.new(0.3, Enum.EasingStyle.Exponential),
+			{BackgroundTransparency = show and 0 or 1}):Play()
+		-- Switch has its own UIStroke — this is the outer ring that stays visible
+		if switch:FindFirstChildOfClass("UIStroke") then
+			TweenService:Create(switch:FindFirstChildOfClass("UIStroke"), TweenInfo.new(0.3, Enum.EasingStyle.Exponential),
+				{Transparency = show and 0 or 1}):Play()
+		end
 		local switchShadow = switch:FindFirstChild("Shadow")
-		if switchShadow and switchShadow:IsA("ImageLabel") then
-			TweenService:Create(switchShadow, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {ImageTransparency = show and 0 or 1}):Play()
+		if switchShadow then
+			TweenService:Create(switchShadow, TweenInfo.new(0.3, Enum.EasingStyle.Exponential),
+				{ImageTransparency = show and 0 or 1}):Play()
 		end
 		local indicator = switch:FindFirstChild("Indicator")
 		if indicator and indicator:IsA("Frame") then
-			TweenService:Create(indicator, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = show and 0 or 1}):Play()
+			TweenService:Create(indicator, TweenInfo.new(0.3, Enum.EasingStyle.Exponential),
+				{BackgroundTransparency = show and 0 or 1}):Play()
+			-- Indicator also has a UIStroke ring
+			if indicator:FindFirstChildOfClass("UIStroke") then
+				TweenService:Create(indicator:FindFirstChildOfClass("UIStroke"), TweenInfo.new(0.3, Enum.EasingStyle.Exponential),
+					{Transparency = show and 0 or 1}):Play()
+			end
 		end
 	end
-	-- Slider: fade the Main frame (the track) and its Progress bar
+	-- Slider: fade the Main track frame, its UIStroke, Progress bar, Progress UIStroke, and info text
 	local sliderMain = element:FindFirstChild("Main")
 	if sliderMain and sliderMain:IsA("Frame") then
-		TweenService:Create(sliderMain, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = show and 0 or 1}):Play()
+		TweenService:Create(sliderMain, TweenInfo.new(0.3, Enum.EasingStyle.Exponential),
+			{BackgroundTransparency = show and 0 or 1}):Play()
+		-- Slider track UIStroke — this is the visible green/themed outline that was ghosting
+		if sliderMain:FindFirstChildOfClass("UIStroke") then
+			TweenService:Create(sliderMain:FindFirstChildOfClass("UIStroke"), TweenInfo.new(0.3, Enum.EasingStyle.Exponential),
+				{Transparency = show and 0.4 or 1}):Play()
+		end
 		local shadow = sliderMain:FindFirstChild("Shadow")
-		if shadow and shadow:IsA("ImageLabel") then
-			TweenService:Create(shadow, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {ImageTransparency = show and 0 or 1}):Play()
+		if shadow then
+			TweenService:Create(shadow, TweenInfo.new(0.3, Enum.EasingStyle.Exponential),
+				{ImageTransparency = show and 0 or 1}):Play()
 		end
 		local progress = sliderMain:FindFirstChild("Progress")
 		if progress and progress:IsA("Frame") then
-			TweenService:Create(progress, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = show and 0 or 1}):Play()
+			TweenService:Create(progress, TweenInfo.new(0.3, Enum.EasingStyle.Exponential),
+				{BackgroundTransparency = show and 0 or 1}):Play()
+			-- Progress also has a UIStroke
+			if progress:FindFirstChildOfClass("UIStroke") then
+				TweenService:Create(progress:FindFirstChildOfClass("UIStroke"), TweenInfo.new(0.3, Enum.EasingStyle.Exponential),
+					{Transparency = show and 0.3 or 1}):Play()
+			end
 		end
 		local info = sliderMain:FindFirstChild("Information")
-		if info and (info:IsA("TextLabel") or info:IsA("TextBox")) then
-			TweenService:Create(info, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = show and 0 or 1}):Play()
+		if info then
+			TweenService:Create(info, TweenInfo.new(0.3, Enum.EasingStyle.Exponential),
+				{TextTransparency = show and 0 or 1}):Play()
 		end
 	end
 end
 
 -- Sets element visibility across all tab pages (used by Hide, Unhide, Maximise, Minimise)
--- BUG FIX: Previously used child.Visible = show which permanently hid children on all tabs,
--- causing tab contents to disappear until switching tabs "refreshed" them.
--- Fix: Use transparency-only animations. Never toggle Visible on tab children — UIPageLayout
--- already handles which page is shown. Only animate the currently active tab to avoid
--- touching off-screen pages that don't need the treatment.
+-- Processes ALL tab pages in both directions — hide touches every tab so nothing
+-- ghosts, and show also restores every tab so switching to any tab works immediately.
 local function setElementsVisible(show)
-	local currentPage = Elements.UIPageLayout.CurrentPage
 	for _, tab in ipairs(Elements:GetChildren()) do
 		if tab.Name ~= "Template" and tab.ClassName == "ScrollingFrame" and tab.Name ~= "Placeholder" then
-			-- Only animate children of the active tab; inactive tabs are already off-screen
-			-- via UIPageLayout and need no transparency changes (that's what caused the bug).
-			local isActivePage = (tab == currentPage)
-			if isActivePage or not show then
-				for _, element in ipairs(tab:GetChildren()) do
-					if element.ClassName == "Frame" then
-						if element.Name ~= "SectionSpacing" and element.Name ~= "Placeholder" then
-							if element.Name == "SectionTitle" or element.Name == 'SearchTitle-fsefsefesfsefesfesfThanks' then
-								TweenService:Create(element.Title, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = show and 0.4 or 1}):Play()
-							elseif element.Name == 'Divider' then
-								TweenService:Create(element.Divider, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = show and 0.85 or 1}):Play()
-							else
-								local bgTarget = element:GetAttribute("BackgroundTransparencyTarget") or 0
-								local strokeTarget = element:GetAttribute("UIStrokeTransparencyTarget") or 0
-								local titleTarget = element:GetAttribute("TitleTextTransparencyTarget") or 0
-								TweenService:Create(element, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = show and bgTarget or 1}):Play()
-								TweenService:Create(element.UIStroke, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {Transparency = show and strokeTarget or 1}):Play()
-								TweenService:Create(element.Title, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = show and titleTarget or 1}):Play()
-								-- Also fade the Toggle switch pill and Slider track — these are child
-								-- Frames with their own BackgroundColor3 and are NOT automatically
-								-- hidden when the parent element fades (Roblox GUI transparency is
-								-- non-inherited). Without this they "ghost" after the window closes.
-								setElementSubWidgetsVisible(element, show)
-							end
+			for _, element in ipairs(tab:GetChildren()) do
+				if element.ClassName == "Frame" then
+					if element.Name ~= "SectionSpacing" and element.Name ~= "Placeholder" then
+						if element.Name == "SectionTitle" or element.Name == 'SearchTitle-fsefsefesfsefesfesfThanks' then
+							TweenService:Create(element.Title, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = show and 0.4 or 1}):Play()
+						elseif element.Name == 'Divider' then
+							TweenService:Create(element.Divider, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = show and 0.85 or 1}):Play()
+						else
+							local bgTarget = element:GetAttribute("BackgroundTransparencyTarget") or 0
+							local strokeTarget = element:GetAttribute("UIStrokeTransparencyTarget") or 0
+							local titleTarget = element:GetAttribute("TitleTextTransparencyTarget") or 0
+							TweenService:Create(element, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = show and bgTarget or 1}):Play()
+							TweenService:Create(element.UIStroke, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {Transparency = show and strokeTarget or 1}):Play()
+							TweenService:Create(element.Title, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = show and titleTarget or 1}):Play()
+							-- Also fade Toggle switch pill / Slider track sub-widgets since
+							-- Roblox GUI transparency is non-inherited (they ghost without this)
+							setElementSubWidgetsVisible(element, show)
 						end
 					end
 				end
