@@ -1039,6 +1039,76 @@ local function ChangeTheme(Theme)
 			if Element.ClassName == "Frame" and Element.Name ~= "Placeholder" and Element.Name ~= "SectionSpacing" and Element.Name ~= "Divider" and Element.Name ~= "SectionTitle" and Element.Name ~= "SearchTitle-fsefsefesfsefesfesfThanks" then
 				Element.BackgroundColor3 = SelectedTheme.ElementBackground
 				Element.UIStroke.Color = SelectedTheme.ElementStroke
+
+				-- BUG FIX: Repaint all sub-widget frames inside each element.
+				-- Without this, switching theme via config on re-execution left the inner
+				-- frames (Toggle switch pill, Slider track, Input box, etc.) painted with
+				-- the old/default theme's colors — the "theme residue" visual bug.
+
+				-- Toggle switch
+				local switch = Element:FindFirstChild("Switch")
+				if switch and switch:IsA("Frame") then
+					switch.BackgroundColor3 = SelectedTheme.ToggleBackground
+					switch.UIStroke.Color = SelectedTheme.ToggleDisabledOuterStroke
+					local indicator = switch:FindFirstChild("Indicator")
+					if indicator and indicator:IsA("Frame") then
+						-- Preserve enabled/disabled coloring based on current state.
+						-- We don't have the ToggleSettings reference here so use indicator
+						-- position as a proxy: right-side = enabled.
+						local isEnabled = indicator.Position.X.Scale >= 0.5
+						indicator.BackgroundColor3 = isEnabled and SelectedTheme.ToggleEnabled or SelectedTheme.ToggleDisabled
+						if indicator:FindFirstChild("UIStroke") then
+							indicator.UIStroke.Color = isEnabled and SelectedTheme.ToggleEnabledStroke or SelectedTheme.ToggleDisabledStroke
+						end
+						switch.UIStroke.Color = isEnabled and SelectedTheme.ToggleEnabledOuterStroke or SelectedTheme.ToggleDisabledOuterStroke
+					end
+					-- Hide shadow on non-default themes (was already done in CreateToggle,
+					-- but ChangeTheme needs to enforce it too when theme swaps happen)
+					local shadow = switch:FindFirstChild("Shadow")
+					if shadow then
+						shadow.Visible = (SelectedTheme == RayfieldLibrary.Theme.Default)
+					end
+				end
+
+				-- Slider track + progress bar
+				local sliderMain = Element:FindFirstChild("Main")
+				if sliderMain and sliderMain:IsA("Frame") then
+					sliderMain.BackgroundColor3 = SelectedTheme.SliderBackground
+					sliderMain.UIStroke.Color = SelectedTheme.SliderStroke
+					local progress = sliderMain:FindFirstChild("Progress")
+					if progress and progress:IsA("Frame") then
+						progress.BackgroundColor3 = SelectedTheme.SliderProgress
+						if progress:FindFirstChild("UIStroke") then
+							progress.UIStroke.Color = SelectedTheme.SliderStroke
+						end
+					end
+					local shadow = sliderMain:FindFirstChild("Shadow")
+					if shadow then
+						shadow.Visible = (SelectedTheme == RayfieldLibrary.Theme.Default)
+					end
+				end
+
+				-- Input / Keybind inner frame
+				local inputFrame = Element:FindFirstChild("InputFrame")
+				if inputFrame and inputFrame:IsA("Frame") then
+					inputFrame.BackgroundColor3 = SelectedTheme.InputBackground
+					if inputFrame:FindFirstChild("UIStroke") then
+						inputFrame.UIStroke.Color = SelectedTheme.InputStroke
+					end
+				end
+				local keybindFrame = Element:FindFirstChild("KeybindFrame")
+				if keybindFrame and keybindFrame:IsA("Frame") then
+					keybindFrame.BackgroundColor3 = SelectedTheme.InputBackground
+					if keybindFrame:FindFirstChild("UIStroke") then
+						keybindFrame.UIStroke.Color = SelectedTheme.InputStroke
+					end
+				end
+
+				-- Dropdown toggle arrow tint
+				local toggle = Element:FindFirstChild("Toggle")
+				if toggle and toggle:IsA("ImageButton") then
+					toggle.ImageColor3 = SelectedTheme.TextColor
+				end
 			end
 		end
 	end
@@ -1433,6 +1503,44 @@ local function closeSearch()
 	Main.Search.Input.Interactable = false
 end
 
+-- Fades the sub-frame widgets (Toggle.Switch, Slider.Main) inside a single element
+-- in or out. These frames sit INSIDE the element and have their own BackgroundColor3,
+-- so they need their own transparency tween — the parent element fading out does NOT
+-- automatically hide them because Roblox GUI transparency is not inherited.
+-- This is the root cause of the Toggle/Slider "ghost" on hide/minimise.
+local function setElementSubWidgetsVisible(element, show)
+	-- Toggle: fade the Switch frame (the pill background)
+	local switch = element:FindFirstChild("Switch")
+	if switch and switch:IsA("Frame") then
+		TweenService:Create(switch, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = show and 0 or 1}):Play()
+		local switchShadow = switch:FindFirstChild("Shadow")
+		if switchShadow and switchShadow:IsA("ImageLabel") then
+			TweenService:Create(switchShadow, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {ImageTransparency = show and 0 or 1}):Play()
+		end
+		local indicator = switch:FindFirstChild("Indicator")
+		if indicator and indicator:IsA("Frame") then
+			TweenService:Create(indicator, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = show and 0 or 1}):Play()
+		end
+	end
+	-- Slider: fade the Main frame (the track) and its Progress bar
+	local sliderMain = element:FindFirstChild("Main")
+	if sliderMain and sliderMain:IsA("Frame") then
+		TweenService:Create(sliderMain, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = show and 0 or 1}):Play()
+		local shadow = sliderMain:FindFirstChild("Shadow")
+		if shadow and shadow:IsA("ImageLabel") then
+			TweenService:Create(shadow, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {ImageTransparency = show and 0 or 1}):Play()
+		end
+		local progress = sliderMain:FindFirstChild("Progress")
+		if progress and progress:IsA("Frame") then
+			TweenService:Create(progress, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = show and 0 or 1}):Play()
+		end
+		local info = sliderMain:FindFirstChild("Information")
+		if info and (info:IsA("TextLabel") or info:IsA("TextBox")) then
+			TweenService:Create(info, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = show and 0 or 1}):Play()
+		end
+	end
+end
+
 -- Sets element visibility across all tab pages (used by Hide, Unhide, Maximise, Minimise)
 -- BUG FIX: Previously used child.Visible = show which permanently hid children on all tabs,
 -- causing tab contents to disappear until switching tabs "refreshed" them.
@@ -1461,11 +1569,12 @@ local function setElementsVisible(show)
 								TweenService:Create(element, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = show and bgTarget or 1}):Play()
 								TweenService:Create(element.UIStroke, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {Transparency = show and strokeTarget or 1}):Play()
 								TweenService:Create(element.Title, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = show and titleTarget or 1}):Play()
+								-- Also fade the Toggle switch pill and Slider track — these are child
+								-- Frames with their own BackgroundColor3 and are NOT automatically
+								-- hidden when the parent element fades (Roblox GUI transparency is
+								-- non-inherited). Without this they "ghost" after the window closes.
+								setElementSubWidgetsVisible(element, show)
 							end
-							-- FIX: Do NOT toggle child.Visible here. Setting Visible=false on sub-frames
-							-- permanently hides them. Their parent element's transparency already makes
-							-- them invisible when hiding, and UIPageLayout handles page switching.
-							-- Removing this was the core fix for the "contents disappear" bug.
 						end
 					end
 				end
@@ -1498,6 +1607,8 @@ local function restoreTabPageElements(tabPage)
 					if element.Title and element.Title.TextTransparency > titleTarget then
 						TweenService:Create(element.Title, TweenInfo.new(0.25, Enum.EasingStyle.Exponential), {TextTransparency = titleTarget}):Play()
 					end
+					-- Also restore Toggle.Switch and Slider.Main sub-widgets
+					setElementSubWidgetsVisible(element, true)
 				end
 			end
 		end
