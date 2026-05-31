@@ -115,7 +115,7 @@ local function secureNotify(wType, title, content)
 	end)
 end
 local InterfaceBuild = 'UU2NX'
-local Release = "Build 1.746"
+local Release = "Build 1.747-patched"
 local RayfieldFolder = "Rayfield"
 local ConfigurationFolder = RayfieldFolder.."/Configurations"
 local ConfigurationExtension = ".rfld"
@@ -689,6 +689,92 @@ local RayfieldLibrary = {
 			InputBackground = Color3.fromRGB(220, 230, 240),
 			InputStroke = Color3.fromRGB(180, 190, 200),
 			PlaceholderColor = Color3.fromRGB(150, 150, 150)
+		},
+
+		-- Modern deep-black theme with subtle warm accents — popular in 2024/25 Roblox UIs
+		Midnight = {
+			TextColor = Color3.fromRGB(220, 220, 230),
+
+			Background = Color3.fromRGB(10, 10, 14),
+			Topbar = Color3.fromRGB(16, 16, 20),
+			Shadow = Color3.fromRGB(5, 5, 8),
+
+			NotificationBackground = Color3.fromRGB(14, 14, 18),
+			NotificationActionsBackground = Color3.fromRGB(30, 30, 38),
+
+			TabBackground = Color3.fromRGB(22, 22, 28),
+			TabStroke = Color3.fromRGB(35, 35, 45),
+			TabBackgroundSelected = Color3.fromRGB(70, 60, 110),
+			TabTextColor = Color3.fromRGB(180, 180, 195),
+			SelectedTabTextColor = Color3.fromRGB(240, 235, 255),
+
+			ElementBackground = Color3.fromRGB(18, 18, 24),
+			ElementBackgroundHover = Color3.fromRGB(26, 26, 34),
+			SecondaryElementBackground = Color3.fromRGB(22, 22, 28),
+			ElementStroke = Color3.fromRGB(38, 38, 50),
+			SecondaryElementStroke = Color3.fromRGB(30, 30, 42),
+
+			SliderBackground = Color3.fromRGB(55, 40, 90),
+			SliderProgress = Color3.fromRGB(110, 80, 170),
+			SliderStroke = Color3.fromRGB(130, 100, 200),
+
+			ToggleBackground = Color3.fromRGB(22, 22, 28),
+			ToggleEnabled = Color3.fromRGB(100, 70, 160),
+			ToggleDisabled = Color3.fromRGB(55, 55, 70),
+			ToggleEnabledStroke = Color3.fromRGB(130, 100, 200),
+			ToggleDisabledStroke = Color3.fromRGB(70, 70, 85),
+			ToggleEnabledOuterStroke = Color3.fromRGB(80, 55, 130),
+			ToggleDisabledOuterStroke = Color3.fromRGB(40, 40, 55),
+
+			DropdownSelected = Color3.fromRGB(30, 25, 48),
+			DropdownUnselected = Color3.fromRGB(18, 18, 24),
+
+			InputBackground = Color3.fromRGB(16, 16, 22),
+			InputStroke = Color3.fromRGB(40, 40, 55),
+			PlaceholderColor = Color3.fromRGB(120, 115, 140)
+		},
+
+		-- Sleek neutral dark — minimal, no colour accent, clean carbon look
+		Carbon = {
+			TextColor = Color3.fromRGB(210, 210, 210),
+
+			Background = Color3.fromRGB(18, 18, 18),
+			Topbar = Color3.fromRGB(24, 24, 24),
+			Shadow = Color3.fromRGB(10, 10, 10),
+
+			NotificationBackground = Color3.fromRGB(22, 22, 22),
+			NotificationActionsBackground = Color3.fromRGB(40, 40, 40),
+
+			TabBackground = Color3.fromRGB(28, 28, 28),
+			TabStroke = Color3.fromRGB(42, 42, 42),
+			TabBackgroundSelected = Color3.fromRGB(200, 200, 200),
+			TabTextColor = Color3.fromRGB(170, 170, 170),
+			SelectedTabTextColor = Color3.fromRGB(20, 20, 20),
+
+			ElementBackground = Color3.fromRGB(26, 26, 26),
+			ElementBackgroundHover = Color3.fromRGB(34, 34, 34),
+			SecondaryElementBackground = Color3.fromRGB(22, 22, 22),
+			ElementStroke = Color3.fromRGB(44, 44, 44),
+			SecondaryElementStroke = Color3.fromRGB(36, 36, 36),
+
+			SliderBackground = Color3.fromRGB(60, 60, 60),
+			SliderProgress = Color3.fromRGB(160, 160, 160),
+			SliderStroke = Color3.fromRGB(180, 180, 180),
+
+			ToggleBackground = Color3.fromRGB(26, 26, 26),
+			ToggleEnabled = Color3.fromRGB(200, 200, 200),
+			ToggleDisabled = Color3.fromRGB(70, 70, 70),
+			ToggleEnabledStroke = Color3.fromRGB(220, 220, 220),
+			ToggleDisabledStroke = Color3.fromRGB(85, 85, 85),
+			ToggleEnabledOuterStroke = Color3.fromRGB(150, 150, 150),
+			ToggleDisabledOuterStroke = Color3.fromRGB(55, 55, 55),
+
+			DropdownSelected = Color3.fromRGB(34, 34, 34),
+			DropdownUnselected = Color3.fromRGB(24, 24, 24),
+
+			InputBackground = Color3.fromRGB(22, 22, 22),
+			InputStroke = Color3.fromRGB(46, 46, 46),
+			PlaceholderColor = Color3.fromRGB(100, 100, 100)
 		},
 	}
 }
@@ -1348,29 +1434,69 @@ local function closeSearch()
 end
 
 -- Sets element visibility across all tab pages (used by Hide, Unhide, Maximise, Minimise)
+-- BUG FIX: Previously used child.Visible = show which permanently hid children on all tabs,
+-- causing tab contents to disappear until switching tabs "refreshed" them.
+-- Fix: Use transparency-only animations. Never toggle Visible on tab children — UIPageLayout
+-- already handles which page is shown. Only animate the currently active tab to avoid
+-- touching off-screen pages that don't need the treatment.
 local function setElementsVisible(show)
+	local currentPage = Elements.UIPageLayout.CurrentPage
 	for _, tab in ipairs(Elements:GetChildren()) do
 		if tab.Name ~= "Template" and tab.ClassName == "ScrollingFrame" and tab.Name ~= "Placeholder" then
-			for _, element in ipairs(tab:GetChildren()) do
-				if element.ClassName == "Frame" then
-					if element.Name ~= "SectionSpacing" and element.Name ~= "Placeholder" then
-						if element.Name == "SectionTitle" or element.Name == 'SearchTitle-fsefsefesfsefesfesfThanks' then
-							TweenService:Create(element.Title, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = show and 0.4 or 1}):Play()
-						elseif element.Name == 'Divider' then
-							TweenService:Create(element.Divider, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = show and 0.85 or 1}):Play()
-						else
-							local bgTarget = element:GetAttribute("BackgroundTransparencyTarget") or 0
-							local strokeTarget = element:GetAttribute("UIStrokeTransparencyTarget") or 0
-							local titleTarget = element:GetAttribute("TitleTextTransparencyTarget") or 0
-							TweenService:Create(element, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = show and bgTarget or 1}):Play()
-							TweenService:Create(element.UIStroke, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {Transparency = show and strokeTarget or 1}):Play()
-							TweenService:Create(element.Title, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = show and titleTarget or 1}):Play()
-						end
-						for _, child in ipairs(element:GetChildren()) do
-							if child.ClassName == "Frame" or child.ClassName == "TextLabel" or child.ClassName == "TextBox" or child.ClassName == "ImageButton" or child.ClassName == "ImageLabel" then
-								child.Visible = show
+			-- Only animate children of the active tab; inactive tabs are already off-screen
+			-- via UIPageLayout and need no transparency changes (that's what caused the bug).
+			local isActivePage = (tab == currentPage)
+			if isActivePage or not show then
+				for _, element in ipairs(tab:GetChildren()) do
+					if element.ClassName == "Frame" then
+						if element.Name ~= "SectionSpacing" and element.Name ~= "Placeholder" then
+							if element.Name == "SectionTitle" or element.Name == 'SearchTitle-fsefsefesfsefesfesfThanks' then
+								TweenService:Create(element.Title, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = show and 0.4 or 1}):Play()
+							elseif element.Name == 'Divider' then
+								TweenService:Create(element.Divider, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = show and 0.85 or 1}):Play()
+							else
+								local bgTarget = element:GetAttribute("BackgroundTransparencyTarget") or 0
+								local strokeTarget = element:GetAttribute("UIStrokeTransparencyTarget") or 0
+								local titleTarget = element:GetAttribute("TitleTextTransparencyTarget") or 0
+								TweenService:Create(element, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = show and bgTarget or 1}):Play()
+								TweenService:Create(element.UIStroke, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {Transparency = show and strokeTarget or 1}):Play()
+								TweenService:Create(element.Title, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = show and titleTarget or 1}):Play()
 							end
+							-- FIX: Do NOT toggle child.Visible here. Setting Visible=false on sub-frames
+							-- permanently hides them. Their parent element's transparency already makes
+							-- them invisible when hiding, and UIPageLayout handles page switching.
+							-- Removing this was the core fix for the "contents disappear" bug.
 						end
+					end
+				end
+			end
+		end
+	end
+end
+
+-- Restores full visibility (transparency = 0) for all elements on a specific tab page.
+-- Called when switching to a tab that may have had its elements hidden by a minimise/hide cycle.
+local function restoreTabPageElements(tabPage)
+	for _, element in ipairs(tabPage:GetChildren()) do
+		if element.ClassName == "Frame" then
+			if element.Name ~= "SectionSpacing" and element.Name ~= "Placeholder" then
+				if element.Name == "SectionTitle" or element.Name == 'SearchTitle-fsefsefesfsefesfesfThanks' then
+					TweenService:Create(element.Title, TweenInfo.new(0.25, Enum.EasingStyle.Exponential), {TextTransparency = 0.4}):Play()
+				elseif element.Name == 'Divider' then
+					TweenService:Create(element.Divider, TweenInfo.new(0.25, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.85}):Play()
+				else
+					local bgTarget = element:GetAttribute("BackgroundTransparencyTarget") or 0
+					local strokeTarget = element:GetAttribute("UIStrokeTransparencyTarget") or 0
+					local titleTarget = element:GetAttribute("TitleTextTransparencyTarget") or 0
+					-- Only restore if actually hidden (avoids needless tween spam)
+					if element.BackgroundTransparency > bgTarget then
+						TweenService:Create(element, TweenInfo.new(0.25, Enum.EasingStyle.Exponential), {BackgroundTransparency = bgTarget}):Play()
+					end
+					if element.UIStroke and element.UIStroke.Transparency > strokeTarget then
+						TweenService:Create(element.UIStroke, TweenInfo.new(0.25, Enum.EasingStyle.Exponential), {Transparency = strokeTarget}):Play()
+					end
+					if element.Title and element.Title.TextTransparency > titleTarget then
+						TweenService:Create(element.Title, TweenInfo.new(0.25, Enum.EasingStyle.Exponential), {TextTransparency = titleTarget}):Play()
 					end
 				end
 			end
@@ -1478,6 +1604,17 @@ local function Maximise()
 
 	setElementsVisible(true)
 
+	-- Ensure the currently active tab page has all its elements properly visible.
+	-- setElementsVisible(true) now only touches the active page (the bug fix), but
+	-- Maximise is a good place to also explicitly restore it in case the page was
+	-- switched to while minimised.
+	local currentPage = Elements.UIPageLayout.CurrentPage
+	if currentPage then
+		task.defer(function()
+			restoreTabPageElements(currentPage)
+		end)
+	end
+
 	task.wait(0.1)
 
 	setTabButtonsVisible(true)
@@ -1532,6 +1669,14 @@ local function Unhide()
 	setTabButtonsVisible(true)
 
 	setElementsVisible(true)
+
+	-- Restore the current tab page elements after unhiding
+	local currentPage = Elements.UIPageLayout.CurrentPage
+	if currentPage then
+		task.defer(function()
+			restoreTabPageElements(currentPage)
+		end)
+	end
 
 	TweenService:Create(dragBarCosmetic, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {BackgroundTransparency = 0.5}):Play()
 
@@ -2132,6 +2277,11 @@ function RayfieldLibrary:CreateWindow(Settings)
 
 		TabButton.Interact.MouseButton1Click:Connect(function()
 			if Minimised then return end
+			-- Close the search bar when switching tabs (modernization fix:
+			-- previously the search remained open on the old tab's content)
+			if searchOpen then
+				task.spawn(closeSearch)
+			end
 			TweenService:Create(TabButton, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0}):Play()
 			TweenService:Create(TabButton.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 			TweenService:Create(TabButton.Title, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
@@ -2154,6 +2304,11 @@ function RayfieldLibrary:CreateWindow(Settings)
 
 			if Elements.UIPageLayout.CurrentPage ~= TabPage then
 				Elements.UIPageLayout:JumpTo(TabPage)
+				-- Restore any elements on this page that may have been hidden
+				-- during a minimise/hide cycle while this tab was not active.
+				task.defer(function()
+					restoreTabPageElements(TabPage)
+				end)
 			end
 		end)
 
@@ -3427,12 +3582,24 @@ function RayfieldLibrary:CreateWindow(Settings)
 				end 
 			end)
 
-			Slider.Main.Interact.InputEnded:Connect(function(Input) 
+			-- BUG FIX: Was Slider.Main.Interact.InputEnded which only fires when mouse is released
+			-- OVER the interact region. If the user drags out of the slider and releases elsewhere,
+			-- SLDragging was never reset, leaving the RunService.Stepped loop running forever —
+			-- causing the slider to keep rendering ("ghost") even after the window was closed.
+			-- Fix: use global UserInputService.InputEnded which fires regardless of cursor position.
+			local sliderInputEndedConn = UserInputService.InputEnded:Connect(function(Input)
 				if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then 
-					TweenService:Create(Slider.Main.UIStroke, TweenInfo.new(0.6, Enum.EasingStyle.Exponential), {Transparency = 0.4}):Play()
-					TweenService:Create(Slider.Main.Progress.UIStroke, TweenInfo.new(0.6, Enum.EasingStyle.Exponential), {Transparency = 0.3}):Play()
-					SLDragging = false 
+					if SLDragging then
+						TweenService:Create(Slider.Main.UIStroke, TweenInfo.new(0.6, Enum.EasingStyle.Exponential), {Transparency = 0.4}):Play()
+						TweenService:Create(Slider.Main.Progress.UIStroke, TweenInfo.new(0.6, Enum.EasingStyle.Exponential), {Transparency = 0.3}):Play()
+						SLDragging = false
+					end
 				end 
+			end)
+
+			-- Clean up the global connection when the slider is destroyed
+			Slider.Destroying:Connect(function()
+				if sliderInputEndedConn then sliderInputEndedConn:Disconnect() end
 			end)
 
 			Slider.Main.Interact.MouseButton1Down:Connect(function(X)
