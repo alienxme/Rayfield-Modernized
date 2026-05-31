@@ -2024,6 +2024,7 @@ function RayfieldLibrary:CreateWindow(Settings)
 		local TabPage = Elements.Template:Clone()
 		TabPage.Name = Name
 		TabPage.Visible = true
+		TabPage.Size = UDim2.new(1, 0, 1, 0)
 
 		TabPage.LayoutOrder = Ext and 10000 or #Elements:GetChildren()
 
