@@ -2,7 +2,7 @@ https://docs.sirius.menu/rayfield
 https://www.rayfield.gg/
 https://developer.sirius.menu/
 
-Welcome to an unofficial fork of the Rayfield respitory this fork addresses the bugs below that the developers of rayfield was too lazy to fix.
+Welcome to an unofficial fork of the Rayfield respitory this fork addresses the bugs below that the developers of rayfield was too lazy to fix:
 
 **Bug 1 — Tab contents disappearing:** In `setElementsVisible(show)`, child visibility is set with `child.Visible = show` — this forces ALL child frames/labels/etc. invisible across ALL tabs, not just the active one. When you switch tabs via `UIPageLayout:JumpTo()`, the new tab's children were already set `Visible = false` by the last hide/unhide cycle and never re-shown (because `setElementsVisible(true)` sets them all, but it races against tween completion and the `Visible` toggle applies globally). The fix: only touch the *current* tab's children, and use transparency tweens consistently rather than toggling `Visible`.
 
