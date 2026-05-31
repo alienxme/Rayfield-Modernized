@@ -4,54 +4,34 @@ https://developer.sirius.menu/
 
 Welcome to an unofficial fork of the Rayfield respitory this fork addresses the bugs below that the developers of rayfield was too lazy to fix:
 
-**Bug 1 — Tab contents disappearing:** In `setElementsVisible(show)`, child visibility is set with `child.Visible = show` — this forces ALL child frames/labels/etc. invisible across ALL tabs, not just the active one. When you switch tabs via `UIPageLayout:JumpTo()`, the new tab's children were already set `Visible = false` by the last hide/unhide cycle and never re-shown (because `setElementsVisible(true)` sets them all, but it races against tween completion and the `Visible` toggle applies globally). The fix: only touch the *current* tab's children, and use transparency tweens consistently rather than toggling `Visible`.
+**Bug 1 (tab content disappearing on ESC):** `setElementsVisible(false)` only operates on the `currentPage` when `show=false` — wait, re-reading: `if isActivePage or not show` — when `show=false`, `not show` = `true`, so it DOES process ALL tabs on hide. That's correct. But when `show=true` it only processes the active page. The problem: on `Minimise()`, `setElementsVisible(false)` runs on ALL tabs and hides their elements, then `Elements.Visible = false` is set. When you `Maximise()`, `Elements.Visible = true` is set but `setElementsVisible(true)` only restores the *currently active page*. If the user pressed ESC (which opens the Roblox menu and may trigger nothing in Rayfield) but the minimise happened previously, the other tabs never get their elements' transparency reset. Additionally `task.defer` for `restoreTabPageElements` runs *asynchronously* after a frame delay, meaning there's a visible flash.
 
-**Bug 2 (Toggle/Slider ghost):** `setElementsVisible(false)` tweens the parent element frame's `BackgroundTransparency` to 1, but `Toggle.Switch` and `Slider.Main` are **child Frames** inside the element. They have their own `BackgroundColor3` but no transparency tween is ever applied to them during hide. The old `child.Visible = show` masked this completely — we removed it correctly, but now need to add proper transparency tweens for these sub-frames.
+**Bug 2 (theme residue):** Image 2 still shows the toggle pills are purple (Amethyst) even after Ocean theme loaded. The `ChangeTheme()` fix checks `isEnabled` by position: `indicator.Position.X.Scale >= 0.5` — but all Toggle indicator positions use **offset** not scale! The disabled position is `UDim2.new(1, -40, ...)` and enabled is `UDim2.new(1, -20, ...)`. Both have `X.Scale = 1`, so `>= 0.5` is always `true` — meaning ChangeTheme always paints ALL toggles as "enabled" color. This is wrong for disabled toggles.
 
-**Bug 3 (theme residue):** `ChangeTheme()` only recolors `Element.BackgroundColor3` and `UIStroke` for top-level element frames. It misses `Toggle.Switch`, `Slider.Main`, `Slider.Main.Progress`, and all the indicator sub-colors. So when config loads and calls `ModifyTheme` *after* the default theme already painted the widgets with Amethyst purple colors, those inner frames keep the old theme's colors.Now also update `restoreTabPageElements` to restore sub-widgets too:Now fix **Bug 2** — the theme residue. `ChangeTheme()` needs to repaint all element sub-widgets (Toggle.Switch, Slider.Main, etc.) not just the top-level frame colors:Now there's one more piece for Bug 2: the individual element `GetPropertyChangedSignal('BackgroundColor3')` listeners (one per Toggle, per Slider, etc.) already handle theme changes via that signal — but they only fire because `ChangeTheme` now sets `Element.BackgroundColor3`. However, the per-element listeners on Toggle and Slider (at the bottom of each Create function) also need to correctly repaint sub-widgets. Let me verify they already do:The per-element `GetPropertyChangedSignal('BackgroundColor3')` handlers *do* already correctly repaint the Toggle.Switch and Slider.Main sub-colors when `ChangeTheme` triggers `Element.BackgroundColor3 = ...`. So **Bug 2 is now fully covered** — the new `ChangeTheme` code does the repainting itself, AND the existing per-element signal handlers fire as a bonus reinforcement. 
-
----
-
-## Bug Fixes
-
-### Bug 1 — Tab Contents Disappearing
-
-**Root cause:** `setElementsVisible()` was toggling `child.Visible = show` on every sub-frame, ImageLabel, TextBox, and TextLabel inside *every* element across *all* tab pages. When you hid or minimized the UI, all children on all pages got `Visible = false`. When you re-opened, `setElementsVisible(true)` only ran animations on the currently active page — but the off-screen tabs had their children permanently hidden with no code path to restore them. Switching tabs triggered a `UIPageLayout:JumpTo()` which made those elements visible by virtue of being the current page, but the children themselves were still `Visible = false`, so they never showed.
-
-**Fix:**
-- Removed the `child.Visible = show` lines entirely. UIPageLayout handles which page is on-screen; you never need to toggle `Visible` on individual children.
-- `setElementsVisible()` now only animates the *active* tab page (not all of them), since inactive pages are already off-screen.
-- Added a new `restoreTabPageElements()` helper that re-shows elements on a specific tab.
-- `restoreTabPageElements()` is now called in `Maximise()`, `Unhide()`, and `TabButton.MouseButton1Click` to guarantee the active page is always fully visible.
+**Bug 3 (outline ghost):** `setElementSubWidgetsVisible` hides `switch.BackgroundTransparency` and `indicator.BackgroundTransparency` but completely misses: `switch.UIStroke.Transparency`, `indicator.UIStroke.Transparency`, `slider.Main.UIStroke.Transparency`, and `slider.Main.Progress.UIStroke.Transparency`. The visible green outline in Image 3 is the slider's `UIStroke` remaining at full opacity.Now fix Bug 2 — the `isEnabled` check using `.Position.X.Scale` which is always `1` for offset-based positions:Now fix Bug 1 — the tab content disappearing. The problem is `setElementsVisible(false)` processes ALL tabs (correct), but on restoration `setElementsVisible(true)` + `restoreTabPageElements` only covers the current page. When the user switches to a different tab after a minimise/hide cycle, that other tab's elements were hidden and never restored. The fix: apply the restore to ALL tabs when restoring, not just the current one:Now update `restoreTabPageElements` to also use `setElementSubWidgetsVisible` with UIStrokes, and simplify the `restoreTabPageElements` — since `setElementsVisible(true)` now covers all tabs, the restore helper is mostly redundant but we keep it for the tab-switch case:Good. Now verify and copy out:All three fixes confirmed. Copy to output:Three precise root-cause fixes:
 
 ---
 
-## Bug 2 — Toggle button & slider ghost after closing
+### Bug 1 — Tab contents disappearing on ESC / tab switch
 
-**Root cause:** Roblox GUI transparency is **not inherited**. When the parent element frame fades to `BackgroundTransparency = 1`, its child frames (`Toggle.Switch` and `Slider.Main`) have their own independent `BackgroundColor3` and simply *do not fade*. The old code used `child.Visible = false` which brute-forced them invisible (and caused the tab disappearing bug we fixed last time). Once we removed that, the ghosting was exposed.
+**Root cause (found this session):** The previous fix added `if isActivePage or not show` — meaning `setElementsVisible(true)` only restored the *currently active tab*. But `setElementsVisible(false)` runs on ALL tabs (since `not show = true`). So after a hide/minimise cycle, every tab's elements were hidden. On restore, only the active tab got its transparency reset. Any other tab you navigated to was still fully hidden.
 
-**Fix:** Added a new helper `setElementSubWidgetsVisible(element, show)` that explicitly tweens:
-- `Toggle.Switch` background transparency
-- `Toggle.Switch.Shadow` image transparency  
-- `Toggle.Switch.Indicator` background transparency
-- `Slider.Main` background transparency
-- `Slider.Main.Shadow` image transparency
-- `Slider.Main.Progress` background transparency
-- `Slider.Main.Information` text transparency
-
-This is called inside `setElementsVisible()` (for hide/minimise) and `restoreTabPageElements()` (for show/maximise/tab switch).
+**Fix:** Removed the `isActivePage` guard entirely. `setElementsVisible` now processes **all tabs in both directions** — hide touches every tab so nothing ghosts, and show restores every tab so switching to any page works immediately.
 
 ---
-## Bug 3 — Default theme residue on re-execution
 
-**Root cause:** `ChangeTheme()` only painted the top-level `Element.BackgroundColor3` and `Element.UIStroke.Color`. It completely skipped every inner sub-frame: `Toggle.Switch` (the purple pill), `Toggle.Switch.Indicator` (the circle), `Slider.Main`, `Slider.Main.Progress`, `InputFrame`, `KeybindFrame`, and the dropdown `Toggle` arrow. So when the script restarted with `Theme = "Amethyst"`, those frames painted purple — then config loaded and called `ModifyTheme("Ocean")`, which correctly changed the window background but left all the inner Amethyst-colored widgets untouched.
+### Bug 2 — Theme residue (Amethyst purple leaking through)
 
-**Fix:** `ChangeTheme()` now walks every element's child frames and repaints: the Toggle switch + indicator (respecting enabled/disabled state by checking indicator position), the Slider track + progress bar + shadow visibility, Input/Keybind inner frames, and the Dropdown arrow tint. The per-element `GetPropertyChangedSignal('BackgroundColor3')` listeners that already existed fire on top of this as a secondary reinforcement.
+**Root cause (found this session):** The `isEnabled` detection in `ChangeTheme` used `indicator.Position.X.Scale >= 0.5`. But Rayfield uses **offset-based** `UDim2` positions — `UDim2.new(1, -20, ...)` for enabled and `UDim2.new(1, -40, ...)` for disabled. Both have `X.Scale = 1`, so the condition was **always `true`** — every toggle was repainted with the enabled (purple) color regardless of its actual state.
 
-## Modernization
+**Fix:** Changed to `indicator.Position.X.Offset > -30`. Since enabled offset = `-20` and disabled = `-40`, the threshold of `-30` correctly distinguishes them. Also switched from `.UIStroke` direct property access to `FindFirstChildOfClass("UIStroke")` which is safer and matches how the elements are actually structured.
 
-- **Version bump:** `Build 1.747-patched`
-- **2 new themes:** `Midnight` (deep OLED black with violet accents) and `Carbon` (neutral monochrome dark, no color accent — very popular for clean 2024/25 UIs). Both are fully compatible with `Window.ModifyTheme()`.
-- **Search closes on tab switch:** Previously the search bar stayed open when you clicked a different tab, leaving it floating over unrelated content. Now `closeSearch()` is called when you switch tabs.
+---
+
+### Bug 3 — Toggle outline + slider outline ghost after close
+
+**Root cause (found this session):** `setElementSubWidgetsVisible` was fading `BackgroundTransparency` on the Switch frame and Indicator frame, but completely missed their **`UIStroke` objects**. UIStrokes are separate `Instance` children and have their own `Transparency` property — they don't inherit from the parent frame. The green ring (slider) and toggle ring visible in Image 3 were exactly these UIStrokes remaining at `Transparency = 0`.
+
+**Fix:** Added `FindFirstChildOfClass("UIStroke")` lookups and transparency tweens for: `Switch.UIStroke`, `Indicator.UIStroke`, `Slider.Main.UIStroke`, and `Slider.Main.Progress.UIStroke`. All four are now properly faded to `Transparency = 1` on hide and restored on show.
 
 [![rayfield](https://user-images.githubusercontent.com/77512805/197843157-3485a6e4-7b18-4372-8277-f3a2e7bd0317.png)](https://sirius.menu/discord)
