@@ -1,3 +1,4 @@
+
 if debugX then
 	warn('Initialising Rayfield')
 end
